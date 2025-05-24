@@ -43,7 +43,7 @@ The variables crashYear and crashFinancialYear contain similar information, and 
 The variable urban is derived from the variable speedLimit, since it contains the same information I will be removing it from the data set.
 
 # Libraries
-```{r}
+```{r,warning = FALSE, message = FALSE}
 library(readxl)
 library(finalfit)
 library(naniar)
@@ -66,7 +66,8 @@ library(performance)
 
 # Loading Data
 ```{r}
-Crash <- read.csv("Crash_Analysis_System_(CAS)_data.csv", na.strings = c("", "Unknown", "Null", "Nil"))
+Crash <- read.csv("Crash_Analysis_System_(CAS)_data.csv",
+                  na.strings = c("", "Unknown", "Null", "Nil"))
 
 ```
 
@@ -77,7 +78,9 @@ Crash <- subset(Crash, select = -c(OBJECTID, crashRoadSideRoad))
 
 Dropping unnecessary variables:
 ```{r}
-Crash <- subset(Crash, select = c(-crashSeverity, -crashLocation1, -crashLocation2, -crashFinancialYear, -tlaName, -tlaId, -directionRoleDescription, -seriousInjuryCount, -minorInjuryCount, -urban))
+Crash <- subset(Crash, select = c(-crashSeverity, -crashLocation1, -crashLocation2,
+        -crashFinancialYear, -tlaName, -tlaId, -directionRoleDescription,
+        -seriousInjuryCount, -minorInjuryCount, -urban))
 ```
 
 
@@ -93,7 +96,7 @@ pander(data.frame(
 The variables are on extremely different scales, which could affect the values of regression coefficients, but will not affect the statistical significance or interpretation of the coefficients for the later regression.
 
 ```{r}
-summary(Crash)
+pander(summary(Crash))
 ```
 Count data: fatalCount, bicycle, bridge, bus, carStationWagon, cliffBank, debris, ditch, fence, guardRail, houseOrBuilding, kerb, moped, motorcycle, NumberOfLanes, objectThrownOrDropped, otherObject, otherVehicleType, overBank, parkedVehicle, pedestrian, phoneBoxEtc, postOrPole, roadworks, schoolBus, slipOrFlood, strayAnimal, suv, taxi, trafficIsland, trafficSign, train, tree, truck, unknownVehicleType, vanOrUtility, vehicle, waterRiver.
 
@@ -105,7 +108,7 @@ Continuous variables: X, Y, advisorySpeed, areaUnitID, meshblockId, speedLimit, 
 
 All of the categorical variables are nominal (lack an inherent order).
 
-The data set is made up of majority count data and categorical variables.
+The data set is majority made up of count data and categorical variables.
 
 There is one logical variable in the data set named intersection it has 870753 NA's which is equal to the total amount of observations in the data set. This means that this variable has no data for any of the observations. As a result I will be removing it
 ```{r}
@@ -113,7 +116,7 @@ Crash <- subset(Crash, select = -c(intersection))
 ```
 
 ```{r}
-head(Crash)
+pander(head(Crash))
 ```
 
 I can see that some variables have lots of NA's such as advisorySpeed which has 836776 NA's - almost the entire variable's data is missing data.
@@ -155,11 +158,11 @@ There are 59 variables and trying to place them onto one plot caused it to be un
 
 ```{r}
 # Producing a missing data plot for the data frame.
-Crash[,1:30] %>% missing_plot(title = "Missing data by observation and variable")
+missing_plot(Crash[,1:30], title = "Missing data by observation and variable")
 ```
 
 ```{r}
-Crash[,31:59] %>% missing_plot(title = "Missing data by observation and variable")
+missing_plot(Crash[,31:59], title = "Missing data by observation and variable")
 ```
 
 It seems that most variables in the Crash data set have large amounts of missing data. Particularly temporarySpeedLimit, pedestrian, the encoded WeatherB variables, the encoded holiday variables, and advisorySpeed which appear to be majority missing data.
@@ -187,7 +190,8 @@ There are 55 variables with missing data out of 59.
 
 Finding out what proportion of each variables data is missing:
 ```{r}
-missing.table <- do.call(rbind, Map(data.frame, variable = missing_percents_colnames, percentage = percentages))
+missing.table <- do.call(rbind, Map(data.frame, variable = missing_percents_colnames,
+                                    percentage = percentages))
 missing.table <- missing.table[rev(order(missing.table$percentage)), ]
 row.names(missing.table) <- c(1:nrow(missing.table))
 missing.table
@@ -332,11 +336,11 @@ ggplot(Crash, aes(x = fatalCount, y = speedLimit)) +
 fatalCount's of 5 and above appear to only occur when speedLimit is above 90
 
 ## Correlation plot
-```{r, echo=FALSE}
+```{r}
 ggcorrplot(cor(select_if(Crash, is.numeric)),
 method = "square",
 lab = TRUE,
-lab_size = 2, 
+lab_size = 1.9, 
 type = "lower")
 ```
 
@@ -346,7 +350,7 @@ findCorrelation(cor(select_if(Crash, is.numeric)), cutoff = 0.7, names = TRUE)
 
 Y is strongly correlated with areaUnitID and meshblockID with a correlation of -0.98 and -0.97 respectively.
 
-areaUnitID is strongly correlated with meshblockID with a correlation of 1.
+The variable areaUnitID is strongly correlated with meshblockID with a correlation of 1.
 
 Due to X and Y being strongly correlated with a correlation of 0.73 and that they contain redundant information already contained in region, I will be dropping X and Y.
 
@@ -363,7 +367,7 @@ I now have 23 variables in the Crash data set.
 pander(skewness(select_if(Crash, is.numeric)))
 ```
 
-fatalCount the response variable has a skewness of 15.07 this is significant departure from the normal distribution which has a skewness of 0.
+The response variable fatalCount has a skewness of 15.07 this is significant departure from the normal distribution which has a skewness of 0.
 
 The majority of the numerical variables have a skewness value above 3. Only vanOrUtility, speedLimit, NumberOfLanes, crashYear and carStationWagon aren't skewed.
 
@@ -372,9 +376,9 @@ The majority of the numerical variables have a skewness value above 3. Only vanO
 pander(kurtosis(select_if(Crash, is.numeric)))
 ```
 
-fatalCount the response variable has a kurtosis of 363.7, which means it has a leptokurtic distribution (high peak) this is significant departure from the normal distribution where the absolute kurtosis value should not exceed 7.1.
+The response variable fatalCount has a kurtosis of 363.7, which means it has a leptokurtic distribution (high peak) this is significant departure from the normal distribution where the absolute kurtosis value should not exceed 7.1.
 
-taxi, motorcycle, bus, moped, otherVehicleType, schoolBus and unknownVehicleType all have extremely high kurtosis values, indicating leptokurtic distributions.
+The variables taxi, motorcycle, bus, moped, otherVehicleType, schoolBus and unknownVehicleType all have extremely high kurtosis values, indicating leptokurtic distributions.
 
 The distributions of most of the variables seem highly skewed with high peaks.
 
@@ -391,7 +395,7 @@ roc_imp <- filterVarImp(x = Crash[,-1], y = Crash$fatalCount, nonpara = TRUE)
 roc_imp <- data.frame(cbind(variable = rownames(roc_imp), score = roc_imp[,1]))
 roc_imp$score <- as.double(roc_imp$score)
 roc_imp <- roc_imp[order(roc_imp$score,decreasing = TRUE),]
-roc_imp
+pander(roc_imp)
 ```
 
 Reducing the data set to the ten most important variables:
@@ -402,8 +406,10 @@ Crash2 <- Crash %>% select(fatalCount, roc_imp$variable[1:10])
 # Poisson Regression
 Fitting a poisson regression model:
 ```{r}
-model_glm_P <- glm(fatalCount ~ speedLimit + motorcycle + roadLane + truck + region + NumberOfLanes + otherVehicleType + crashSHDescription + carStationWagon + flatHill, data = Crash2, family = poisson)
-summary(model_glm_P)
+model_glm_P <- glm(fatalCount ~ speedLimit + motorcycle + roadLane + truck + region + 
+                     NumberOfLanes + otherVehicleType + crashSHDescription + 
+                     carStationWagon + flatHill, data = Crash2, family = poisson)
+pander(summary(model_glm_P))
 ```
 
 # Checking model assumptions:
@@ -424,7 +430,9 @@ To handle the overdispersion I could fit a quasipoission distribution or a negat
 Because I want to use AIC or BIC for model selection I will fit a negative binomial model, as quasi-poisson models cannot use AIC or BIC for model selection. This is due to quasi-Poisson models using quasi-likelihood rather than true likelihood.
 
 ```{r}
-model_nb <- glm.nb(fatalCount ~ speedLimit + motorcycle + roadLane + truck + region + NumberOfLanes + otherVehicleType + crashSHDescription + carStationWagon + flatHill, data = Crash2)
+model_nb <- glm.nb(fatalCount ~ speedLimit + motorcycle + roadLane + truck + region + 
+                     NumberOfLanes + otherVehicleType + crashSHDescription + 
+                     carStationWagon + flatHill, data = Crash2)
 ```
 
 
@@ -465,9 +473,11 @@ Crash2 <- Crash2[-c(190331, 221131, 399903, 634541, 665208, 772429),]
 # Interpretting model coefficients
 ```{r}
 # refitting model using data excluding influential points
-model_nb <- glm.nb(fatalCount ~ speedLimit + motorcycle + roadLane + truck + region + NumberOfLanes + otherVehicleType + crashSHDescription + carStationWagon + flatHill, data = Crash2)
+model_nb <- glm.nb(fatalCount ~ speedLimit + motorcycle + roadLane + truck + region + 
+                     NumberOfLanes + otherVehicleType + crashSHDescription + 
+                     carStationWagon + flatHill, data = Crash2)
 
-summary(model_nb)
+pander(summary(model_nb))
 ```
 
 Interpretation of coefficients.

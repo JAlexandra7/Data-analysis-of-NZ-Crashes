@@ -1,0 +1,538 @@
+---
+title: "Crash Fatalities"
+author: "JAlexandra"
+date: "2025-05"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Purpose
+
+I am looking at understanding the relationship between fatalCount (the count of fatalities associated with a crash) and the rest of the variables in this data set.
+
+# Looking at the data descriptions
+On https://opendata-nzta.opendata.arcgis.com/pages/cas-data-field-descriptions there are the descriptions of the variables along with their variable names in the Crash data set.
+
+I found that the variables crashDistance, easting, northing, and roadMarkings are listed as in the data set on that page, but are not in this csv.
+
+The variables X, Y, objectID, and crashRoadSideRoad are in the data set but are not listed on this page.
+
+The X-coordinate is often referred to as the "Easting", it seems like a reasonable assumption to say that the easting variable is the X variable and the northing variable is the Y variable in this dataset.
+
+However there is no obvious link between the variables crashDistance, roadMarkings, objectID and crashRoadSideRoad.
+
+Because I cannot determine the exact meanings of the variables objectID, and crashRoadSideRoad I will be removing them from the data set.
+
+Small discrepencies in variable names when comparing the field descriptions variable names to the data sets variable names:
+
+The variable intersectionMidblock mentioned in the field descriptions appears to be the variable intersection in the dataset.
+
+Likewise with roadCharacter1 and roadCharacter.
+
+The variables fatalCount, crashSeverity, seriousInjuryCount and minorInjuryCount contain similar information and I'm choosing to drop crashSeverity, seriousInjuryCount and minorInjuryCount
+
+There are a significant amount variables that give location data, such as X, Y, and region. For the purposes of this research much of this information is redundant, as a result I will be removing the following variables crashLocation1, crashLocation2, directionRoleDescription and tlaName.
+
+The variables crashYear and crashFinancialYear contain similar information, and I am choosing to drop crashFinancialYear.
+
+The variable urban is derived from the variable speedLimit, since it contains the same information I will be removing it from the data set.
+
+# Libraries
+```{r}
+library(readxl)
+library(finalfit)
+library(naniar)
+library(scales)
+library(psych)
+library(ggcorrplot)
+library(caret)
+library(moments)
+library(MVN)
+library(reshape2)
+library(ggplot2)
+library(pander)
+library(car)
+library(MASS)
+library(dplyr)
+library(AER)
+library(performance)
+```
+
+
+# Loading Data
+```{r}
+Crash <- read.csv("Crash_Analysis_System_(CAS)_data.csv", na.strings = c("", "Unknown", "Null", "Nil"))
+
+```
+
+Dropping unknown variables:
+```{r}
+Crash <- subset(Crash, select = -c(OBJECTID, crashRoadSideRoad))
+```
+
+Dropping unnecessary variables:
+```{r}
+Crash <- subset(Crash, select = c(-crashSeverity, -crashLocation1, -crashLocation2, -crashFinancialYear, -tlaName, -tlaId, -directionRoleDescription, -seriousInjuryCount, -minorInjuryCount, -urban))
+```
+
+
+# EDA
+## Quantitative analysis
+```{r}
+pander(data.frame(
+  mean = sapply(select_if(Crash, is.numeric), mean, na.rm = TRUE),
+  median = sapply(select_if(Crash, is.numeric), median, na.rm = TRUE),
+  iqr = sapply(select_if(Crash, is.numeric), IQR, na.rm = TRUE)
+))
+```
+The variables are on extremely different scales, which could affect the values of regression coefficients, but will not affect the statistical significance or interpretation of the coefficients for the later regression.
+
+```{r}
+summary(Crash)
+```
+Count data: fatalCount, bicycle, bridge, bus, carStationWagon, cliffBank, debris, ditch, fence, guardRail, houseOrBuilding, kerb, moped, motorcycle, NumberOfLanes, objectThrownOrDropped, otherObject, otherVehicleType, overBank, parkedVehicle, pedestrian, phoneBoxEtc, postOrPole, roadworks, schoolBus, slipOrFlood, strayAnimal, suv, taxi, trafficIsland, trafficSign, train, tree, truck, unknownVehicleType, vanOrUtility, vehicle, waterRiver.
+
+A large amount of the count data variables are derived variables.
+
+Discrete variables (not including count data): crashYear
+
+Continuous variables: X, Y, advisorySpeed, areaUnitID, meshblockId, speedLimit, temporarySpeedLimit
+
+All of the categorical variables are nominal (lack an inherent order).
+
+The data set is made up of majority count data and categorical variables.
+
+There is one logical variable in the data set named intersection it has 870753 NA's which is equal to the total amount of observations in the data set. This means that this variable has no data for any of the observations. As a result I will be removing it
+```{r}
+Crash <- subset(Crash, select = -c(intersection))
+```
+
+```{r}
+head(Crash)
+```
+
+I can see that some variables have lots of NA's such as advisorySpeed which has 836776 NA's - almost the entire variable's data is missing data.
+
+## Data cleaning
+
+### Converting Categorical data for regression
+All categorical variables in the data set:
+```{r}
+colnames(select_if(Crash, is.character))
+```
+
+```{r}
+sort(unique(Crash[["crashSHDescription"]]))
+```
+Note: crashSHDescription "Indicates where a crash is reported to have occurred on a State Highway (SH) marked ‘1’, or on another road type marked ‘2’" according to the field descriptions, but in this data set it is coded with "No" and "Yes".
+
+Turning all categorical variables into factors for regression:
+```{r}
+Crash$crashSHDescription <- as.factor(Crash$crashSHDescription)
+Crash$flatHill <- as.factor(Crash$flatHill)
+Crash$holiday <- as.factor(Crash$holiday)
+Crash$light <- as.factor(Crash$light)
+Crash$region <- as.factor(Crash$region)
+Crash$roadCharacter <- as.factor(Crash$roadCharacter)
+Crash$roadLane <- as.factor(Crash$roadLane)
+Crash$roadSurface <- as.factor(Crash$roadSurface)
+Crash$streetLight <- as.factor(Crash$streetLight)
+Crash$trafficControl <- as.factor(Crash$trafficControl)
+Crash$weatherA <- as.factor(Crash$weatherA)
+Crash$weatherB <- as.factor(Crash$weatherB)
+Crash$crashDirectionDescription <- as.factor(Crash$crashDirectionDescription)
+
+```
+
+### Missing data
+
+There are 59 variables and trying to place them onto one plot caused it to be unreadable. To resolve this it has been split into separate plots.
+
+```{r}
+# Producing a missing data plot for the data frame.
+Crash[,1:30] %>% missing_plot(title = "Missing data by observation and variable")
+```
+
+```{r}
+Crash[,31:59] %>% missing_plot(title = "Missing data by observation and variable")
+```
+
+It seems that most variables in the Crash data set have large amounts of missing data. Particularly temporarySpeedLimit, pedestrian, the encoded WeatherB variables, the encoded holiday variables, and advisorySpeed which appear to be majority missing data.
+
+Calculating how many variables have missing data:
+```{r}
+percentages <- c()
+missing_percents_colnames <- c()
+x = 0
+for (i in colnames(Crash)){
+  if (sum(is.na(Crash[[i]])) > 0){
+    percentages <- append(percentages, prop_miss(Crash[[i]]))
+    missing_percents_colnames <- append(missing_percents_colnames, colnames(Crash[i]))
+    x = x + 1
+  }
+}
+print(x)
+
+# Turning proportion to percentage
+percentages <- percent(percentages, accuracy = 0.01)
+
+```
+
+There are 55 variables with missing data out of 59.
+
+Finding out what proportion of each variables data is missing:
+```{r}
+missing.table <- do.call(rbind, Map(data.frame, variable = missing_percents_colnames, percentage = percentages))
+missing.table <- missing.table[rev(order(missing.table$percentage)), ]
+row.names(missing.table) <- c(1:nrow(missing.table))
+missing.table
+```
+
+30 variables have more than 59% of their data missing. Another 2 variables have around 30% of their data missing.
+
+I think it would be best to drop these variables as other methods such as imputation for the missing data would be too computationally expensive given the scale of the data.
+
+```{r}
+# Dropping variables
+Crash <- Crash %>% select(-missing.table$variable[1:32])
+```
+
+There are now have 27 variables in the data set.
+
+Reducing the data down to complete cases only:
+```{r}
+Crash <- Crash[complete.cases(Crash), ]
+# making the dependent variable the first column
+Crash <- Crash %>% relocate(fatalCount)
+```
+This causes the amount of observations I have to go from 870,753 to 844,965, a reduction of 2.96% (to 2 d.p).
+
+# Plotting data
+## Boxplots of categorical data
+
+All categorical variables:
+```{r}
+colnames(select_if(Crash, is.factor))
+```
+Bar plot of crashSHDescription:
+```{r}
+ggplot(Crash, aes(x = crashSHDescription)) +
+  geom_bar(fill = "navy") +
+  ggtitle("crashSHDescription distribution") 
+```
+There are less twilight observations (around 500,000).
+
+Bar plot of flatHill:
+```{r}
+ggplot(Crash, aes(x = flatHill)) +
+  geom_bar(fill = "navy") +
+  ggtitle("flatHill distribution") 
+```
+
+Bar plot of light:
+```{r}
+ggplot(Crash, aes(x = light)) +
+  geom_bar(fill = "navy") +
+  ggtitle("light distribution") 
+```
+
+Bar plot of region:
+```{r}
+ggplot(Crash, aes(x = region)) +
+  geom_bar(fill = "navy") +
+  coord_flip() +
+  ggtitle("region distribution") 
+```
+The majority of car crashes occur in Auckland.
+
+Bar plot of roadLane:
+```{r}
+ggplot(Crash, aes(x = roadLane)) +
+  geom_bar(fill = "navy") +
+  coord_flip() +
+  ggtitle("roadLane distribution") 
+```
+Few Off road observations
+
+Bar plot of roadSurface:
+```{r}
+ggplot(Crash, aes(x = roadSurface)) +
+  geom_bar(fill = "navy") +
+  ggtitle("roadSurface distribution") 
+```
+
+There are very few End of seal observations
+```{r}
+sum(Crash$roadSurface == "End of seal")
+```
+
+Bar plot of weatherA:
+```{r}
+ggplot(Crash, aes(x = weatherA)) +
+  geom_bar(fill = "navy") +
+  ggtitle("weatherA distribution") 
+```
+```{r}
+sum(Crash$weatherA == "Hail or Sleet")
+```
+There are only 172 Hail or Sleet observations
+Many of the categorical variables are imbalanced
+
+## Numerical data plots
+Count plot of response variable fatalCount:
+```{r}
+ggplot(Crash, aes(x = flatHill, y = fatalCount)) +
+  geom_count(aes(color = after_stat(n), size = after_stat(n))) +
+  guides(color = 'legend') + ggtitle("Count plot of fatalCount by flatHill") 
+```
+There are few observations with at least 1 death.
+
+```{r}
+sum(Crash$fatalCount == 0)
+sum(Crash$fatalCount >= 1)
+
+round((7968/836997)*100, 2)
+```
+Observations with 1 or more deaths make up only 0.95% of observations.
+
+```{r}
+ggplot(Crash, aes(x = fatalCount)) +
+  geom_histogram(fill = "navy")  + ggtitle("fatalCount distribution") 
+```
+
+Zero deaths appear to be the vast majority of car crashes, this could potentially indicate zero inflation.
+
+```{r}
+ggplot(data = Crash,
+       mapping = aes(x = crashYear, fill = region)) +
+  geom_histogram(alpha = 0.5, bins = 50) +
+  labs(x = "Crash year", y = "Count",
+       title = "crashYear by flatHill and Region") +
+  facet_grid(. ~ flatHill) +
+  theme_bw()
+```
+More crashes occur on flat roads than hill roads for every year recorded. But that could be due to there being more flat roads overall in New Zealand than there are hill roads.
+
+```{r}
+ggplot(Crash, aes(x = X, y = Y, color = region)) +
+  geom_point() + ggtitle("X by Y and region") 
+```
+It appears that X and Y contain redundant information that can be modeled by region.
+
+Count plot of response variable fatalCount:
+```{r}
+ggplot(Crash, aes(x = fatalCount, y = speedLimit)) +
+  geom_count() + ggtitle("Count plot of fatalCount by speedLimit") 
+```
+fatalCount's of 5 and above appear to only occur when speedLimit is above 90
+
+## Correlation plot
+```{r, echo=FALSE}
+ggcorrplot(cor(select_if(Crash, is.numeric)),
+method = "square",
+lab = TRUE,
+lab_size = 2, 
+type = "lower")
+```
+
+```{r}
+findCorrelation(cor(select_if(Crash, is.numeric)), cutoff = 0.7, names = TRUE)
+```
+
+Y is strongly correlated with areaUnitID and meshblockID with a correlation of -0.98 and -0.97 respectively.
+
+areaUnitID is strongly correlated with meshblockID with a correlation of 1.
+
+Due to X and Y being strongly correlated with a correlation of 0.73 and that they contain redundant information already contained in region, I will be dropping X and Y.
+
+Due to the strong correlation between these variables I will be removing the following variables: areaUnitID and meshblockId
+
+```{r}
+Crash <- Crash %>% select(-areaUnitID, -meshblockId, -Y, -X)
+```
+
+I now have 23 variables in the Crash data set.
+
+## Skewness
+```{r}
+pander(skewness(select_if(Crash, is.numeric)))
+```
+
+fatalCount the response variable has a skewness of 15.07 this is significant departure from the normal distribution which has a skewness of 0.
+
+The majority of the numerical variables have a skewness value above 3. Only vanOrUtility, speedLimit, NumberOfLanes, crashYear and carStationWagon aren't skewed.
+
+## Kurtosis
+```{r}
+pander(kurtosis(select_if(Crash, is.numeric)))
+```
+
+fatalCount the response variable has a kurtosis of 363.7, which means it has a leptokurtic distribution (high peak) this is significant departure from the normal distribution where the absolute kurtosis value should not exceed 7.1.
+
+taxi, motorcycle, bus, moped, otherVehicleType, schoolBus and unknownVehicleType all have extremely high kurtosis values, indicating leptokurtic distributions.
+
+The distributions of most of the variables seem highly skewed with high peaks.
+
+The kurtosis and skewness of fatalCount (the response variable) indicates that the variables distribution deviates significantly from a normal distribution meaning that the assumption of normality has been violated.
+
+Due to the non-normality of the data I will fit a generalized linear model to the data due to its robustness to non-normality (particularly when the data set is large).
+
+Given that the response variable is discrete count data (counting the number of deaths per car crash) I will attempt to fit a poisson model to the data first.
+
+# Feature selection:
+Feature importance:
+```{r}
+roc_imp <- filterVarImp(x = Crash[,-1], y = Crash$fatalCount, nonpara = TRUE)
+roc_imp <- data.frame(cbind(variable = rownames(roc_imp), score = roc_imp[,1]))
+roc_imp$score <- as.double(roc_imp$score)
+roc_imp <- roc_imp[order(roc_imp$score,decreasing = TRUE),]
+roc_imp
+```
+
+Reducing the data set to the ten most important variables:
+```{r}
+Crash2 <- Crash %>% select(fatalCount, roc_imp$variable[1:10])
+```
+
+# Poisson Regression
+Fitting a poisson regression model:
+```{r}
+model_glm_P <- glm(fatalCount ~ speedLimit + motorcycle + roadLane + truck + region + NumberOfLanes + otherVehicleType + crashSHDescription + carStationWagon + flatHill, data = Crash2, family = poisson)
+summary(model_glm_P)
+```
+
+# Checking model assumptions:
+
+I need to check if the response variable fatalCount follows a poisson distribution:
+
+```{r}
+dispersiontest(model_glm_P, alternative = "two.sided")
+```
+
+```{r}
+dispersiontest(model_glm_P, alternative = "greater")
+```
+The small p-value indicates that the data does not fit a poisson distribution. Overdispersion means the assumptions of the model are not met.
+
+To handle the overdispersion I could fit a quasipoission distribution or a negative binomial distribution to the data instead of a poisson distribution.
+
+Because I want to use AIC or BIC for model selection I will fit a negative binomial model, as quasi-poisson models cannot use AIC or BIC for model selection. This is due to quasi-Poisson models using quasi-likelihood rather than true likelihood.
+
+```{r}
+model_nb <- glm.nb(fatalCount ~ speedLimit + motorcycle + roadLane + truck + region + NumberOfLanes + otherVehicleType + crashSHDescription + carStationWagon + flatHill, data = Crash2)
+```
+
+
+Previously I found that only 0.95% of fatalCount data (the response variable) had a count different from 0.
+
+I am going to test for zero inflation due to this:
+```{r}
+check_zeroinflation(model_nb)
+```
+The ratio of observed and predicted zeros is within the tolerance range which means that zero inflation is not an issue for the negative binomial model, so there is no need to fit a zero-inflated negative binomial model.
+
+# Variable selection
+stepwise BIC:
+```{r}
+step(model_nb, direction = "both", k = log(844965))
+```
+BIC stepwise regression selected all variables already in the model.
+
+# Diagnostic measures
+
+Is there severe multicollinearity in the data set:
+```{r}
+pander(vif(model_nb))
+```
+
+The variance inflation factors (VIF's) are all below 10, meaning there is no evidence of severe multicollinearity of the predictors.
+
+Cook's distance:
+```{r}
+influencePlot(model_nb)
+```
+There are six oberservations that are influential points according to cook's distance, I will remove them from the data set.
+
+```{r}
+Crash2 <- Crash2[-c(190331, 221131, 399903, 634541, 665208, 772429),]
+```
+
+# Interpretting model coefficients
+```{r}
+# refitting model using data excluding influential points
+model_nb <- glm.nb(fatalCount ~ speedLimit + motorcycle + roadLane + truck + region + NumberOfLanes + otherVehicleType + crashSHDescription + carStationWagon + flatHill, data = Crash2)
+
+summary(model_nb)
+```
+
+Interpretation of coefficients.
+For a one unit change in the speedLimit, the log of expected counts of fatalCount changes by 0.0325426, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
+
+For a one unit change in the motorcycle, the log of expected counts of fatalCount changes by 1.0454277, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
+
+The expected log count for 2-way road lane is 1.4018498 higher than the expected log count for a 1-way road lane. This is statistically significant at a significance level of 0.05
+
+The expected log count for Off road lane is 1.6252327 higher than the expected log count for a 1-way road lane. This is statistically significant at a significance level of 0.05
+
+For a one unit change in the truck, the log of expected counts of fatalCount changes by 0.6661703, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
+
+The expected log count for the Bay of Plenty region is 0.4397231 higher than the expected log count for the Auckland region. This is statistically significant at a significance level of 0.05
+
+The expected log count for the Canterbury region is 0.3485874 higher than the expected log count for the Auckland region. This is statistically significant at a significance level of 0.05
+
+The expected log count for the Gisborne region is 0.1265755 higher than the expected log count for the Auckland region. This is not statistically significant at a significance level of 0.05
+
+The expected log count for the Hawke's Bay region is 0.1814586 higher than the expected log count for the Auckland region. This is statistically significant at a significance level of 0.05
+
+The expected log count for the Manawatū-Whanganui region is 0.3178115 higher than the expected log count for the Auckland region. This is statistically significant at a significance level of 0.05
+
+The expected log count for the Marlborough region is 0.2317315 higher than the expected log count for the Auckland region. This is not statistically significant at a significance level of 0.05
+
+The expected log count for the Nelson region is -0.2286856 higher than the expected log count for the Auckland region. This is not statistically significant at a significance level of 0.05
+
+The expected log count for the Northland region is 0.3741685 higher than the expected log count for the Auckland region. This is statistically significant at a significance level of 0.05
+
+The expected log count for the Otago region is -0.1199022 higher than the expected log count for the Auckland region. This is not statistically significant at a significance level of 0.05
+
+The expected log count for the Southland region is 0.0405806 higher than the expected log count for the Auckland region. This is not statistically significant at a significance level of 0.05
+
+The expected log count for the Taranaki region is 0.1997085 higher than the expected log count for the Auckland region. This is statistically significant at a significance level of 0.05
+
+The expected log count for the Tasman region is -0.0951974 higher than the expected log count for the Auckland region. This is not statistically significant at a significance level of 0.05
+
+The expected log count for the Waikato region is 0.3686458 higher than the expected log count for the Auckland region. This is statistically significant at a significance level of 0.05
+
+The expected log count for the Wellington region is -0.1426382 higher than the expected log count for the Auckland region. This is statistically significant at a significance level of 0.05
+
+The expected log count for the West Coast region is 0.2251500 higher than the expected log count for the Auckland region. This is statistically significant at a significance level of 0.05
+
+For a one unit change in the NumberOfLanes, the log of expected counts of fatalCount changes by -0.1684421, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
+
+For a one unit change in the otherVehicleType, the log of expected counts of fatalCount changes by 0.3119136, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
+
+For a one unit change in the crashSHDescriptionYes, the log of expected counts of fatalCount changes by 0.2097563, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
+
+For a one unit change in the carStationWagon, the log of expected counts of fatalCount changes by -0.1937036, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
+
+For a one unit change in the flatHillHill, the log of expected counts of fatalCount changes by -0.0106745, given that the other predictor variables in the model are held constant. This change is not statistically significant at significance level of 0.05
+
+# Using model for prediction
+Estimating count of deaths in a car crash based on new data:
+```{r}
+newdata1 <- data.frame(speedLimit = 100,
+                       motorcycle = 2,
+                       roadLane = "2-way",
+                       truck = 5,
+                       region = "Bay of Plenty Region",
+                       NumberOfLanes = 4,
+                       otherVehicleType = 3,
+                       crashSHDescription = "Yes",
+                       carStationWagon = 3,
+                       flatHill = "Hill Road")
+predict(model_nb, newdata = newdata1)
+```

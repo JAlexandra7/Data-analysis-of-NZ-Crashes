@@ -64,6 +64,8 @@ library(performance)
 library(DHARMa)
 library(tidyverse)
 library(broom)
+library(knitr)
+library(Metrics)
 ```
 
 # Loading Data
@@ -154,23 +156,31 @@ Crash$crashDirectionDescription <- as.factor(Crash$crashDirectionDescription)
 
 ```
 
+### Train, test split
+```{r}
+set.seed(1)
+sample <- sample(c(TRUE, FALSE), nrow(Crash), replace = TRUE, prob = c(0.8, 0.2))
+Train_set  <- Crash[sample, ]
+Test_set   <- Crash[!sample, ]
+```
+
 ### Missing data
 
 There are 59 variables and trying to place them onto one plot caused it to be unreadable. To resolve this it has been split into separate plots.
 
 ```{r}
 # Producing a missing data plot for the data frame.
-missing_plot(Crash[,1:30], title = "Missing data by observation and variable")
+missing_plot(Train_set[,1:30], title = "Missing data by observation and variable")
 ```
 
 ```{r}
-missing_plot(Crash[,31:59], title = "Missing data by observation and variable")
+missing_plot(Train_set[,31:59], title = "Missing data by observation and variable")
 ```
 
 ```{r}
 # Saving plots:
-# plotA <- missing_plot(Crash[,1:30], title = "Missing data by observation and variable")
-# plotB <- missing_plot(Crash[,31:59], title = "Missing data by observation and variable")
+# plotA <- missing_plot(Train_set[,1:30], title = "Missing data by observation and variable")
+# plotB <- missing_plot(Train_set[,31:59], title = "Missing data by observation and variable")
 # ggsave(plotA, 
 #       filename = "Missing data by observation and variable (variables 1 to 31).png",
 #       device = "png")
@@ -187,10 +197,10 @@ Calculating how many variables have missing data:
 percentages <- c()
 missing_percents_colnames <- c()
 x = 0
-for (i in colnames(Crash)){
-  if (sum(is.na(Crash[[i]])) > 0){
-    percentages <- append(percentages, prop_miss(Crash[[i]]))
-    missing_percents_colnames <- append(missing_percents_colnames, colnames(Crash[i]))
+for (i in colnames(Train_set)){
+  if (sum(is.na(Train_set[[i]])) > 0){
+    percentages <- append(percentages, prop_miss(Train_set[[i]]))
+    missing_percents_colnames <- append(missing_percents_colnames, colnames(Train_set[i]))
     x = x + 1
   }
 }
@@ -218,16 +228,16 @@ I think it would be best to drop these variables as other methods such as imputa
 
 ```{r}
 # Dropping variables
-Crash <- Crash %>% select(-missing.table$variable[1:32])
+Train_set <- Train_set %>% select(-missing.table$variable[1:32])
 ```
 
 There are now have 27 variables in the data set.
 
 Reducing the data down to complete cases only:
 ```{r}
-Crash <- Crash[complete.cases(Crash), ]
+Train_set <- Train_set[complete.cases(Train_set), ]
 # making the dependent variable the first column
-Crash <- Crash %>% relocate(fatalCount)
+Train_set <- Train_set %>% relocate(fatalCount)
 ```
 This causes the amount of observations I have to go from 870,753 to 844,965, a reduction of 2.96% (to 2 d.p).
 
@@ -236,33 +246,35 @@ This causes the amount of observations I have to go from 870,753 to 844,965, a r
 
 All categorical variables:
 ```{r}
-colnames(select_if(Crash, is.factor))
+colnames(select_if(Train_set, is.factor))
 ```
 Bar plot of crashSHDescription:
 ```{r}
-ggplot(Crash, aes(x = crashSHDescription)) +
+ggplot(Train_set, aes(x = crashSHDescription)) +
   geom_bar(fill = "navy") +
   ggtitle("crashSHDescription distribution") 
 ```
-There are less twilight observations (around 500,000).
+Less crashes occurred on a state highway, around 200,000 of the observations occurred on a state highway.
 
 Bar plot of flatHill:
 ```{r}
-ggplot(Crash, aes(x = flatHill)) +
+ggplot(Train_set, aes(x = flatHill)) +
   geom_bar(fill = "navy") +
   ggtitle("flatHill distribution") 
 ```
 
 Bar plot of light:
 ```{r}
-ggplot(Crash, aes(x = light)) +
+ggplot(Train_set, aes(x = light)) +
   geom_bar(fill = "navy") +
   ggtitle("light distribution") 
 ```
+There are less twilight observations, less than 50,000 of the observations occurred during twilight.
+
 
 Bar plot of region:
 ```{r}
-ggplot(Crash, aes(x = region)) +
+ggplot(Train_set, aes(x = region)) +
   geom_bar(fill = "navy") +
   coord_flip() +
   ggtitle("region distribution") 
@@ -271,63 +283,63 @@ The majority of car crashes occur in Auckland.
 
 Bar plot of roadLane:
 ```{r}
-ggplot(Crash, aes(x = roadLane)) +
+ggplot(Train_set, aes(x = roadLane)) +
   geom_bar(fill = "navy") +
   coord_flip() +
   ggtitle("roadLane distribution") 
 ```
-Few Off road observations
+Very few off road observations
 
 Bar plot of roadSurface:
 ```{r}
-ggplot(Crash, aes(x = roadSurface)) +
+ggplot(Train_set, aes(x = roadSurface)) +
   geom_bar(fill = "navy") +
   ggtitle("roadSurface distribution") 
 ```
 
 There are very few End of seal observations
 ```{r}
-sum(Crash$roadSurface == "End of seal")
+sum(Train_set$roadSurface == "End of seal")
 ```
 
 Bar plot of weatherA:
 ```{r}
-ggplot(Crash, aes(x = weatherA)) +
+ggplot(Train_set, aes(x = weatherA)) +
   geom_bar(fill = "navy") +
   ggtitle("weatherA distribution") 
 ```
 ```{r}
-sum(Crash$weatherA == "Hail or Sleet")
+sum(Train_set$weatherA == "Hail or Sleet")
 ```
-There are only 172 Hail or Sleet observations
+There are only 141 Hail or Sleet observations
 Many of the categorical variables are imbalanced
 
 ## Numerical data plots
 Count plot of response variable fatalCount:
 ```{r}
-ggplot(Crash, aes(x = flatHill, y = fatalCount)) +
+ggplot(Train_set, aes(x = flatHill, y = fatalCount)) +
   geom_count(aes(color = after_stat(n), size = after_stat(n))) +
   guides(color = 'legend') + ggtitle("Count plot of fatalCount by flatHill") 
 ```
 There are few observations with at least 1 death.
 
 ```{r}
-sum(Crash$fatalCount == 0)
-sum(Crash$fatalCount >= 1)
+sum(Train_set$fatalCount == 0)
+sum(Train_set$fatalCount >= 1)
 
 round((7968/836997)*100, 2)
 ```
 Observations with 1 or more deaths make up only 0.95% of observations.
 
 ```{r}
-ggplot(Crash, aes(x = fatalCount)) +
+ggplot(Train_set, aes(x = fatalCount)) +
   geom_histogram(fill = "navy")  + ggtitle("fatalCount distribution") 
 ```
 
 Zero deaths appear to be the vast majority of car crashes, this could potentially indicate zero inflation.
 
 ```{r}
-ggplot(data = Crash,
+ggplot(data = Train_set,
        mapping = aes(x = crashYear, fill = region)) +
   geom_histogram(alpha = 0.5, bins = 50) +
   labs(x = "Crash year", y = "Count",
@@ -338,21 +350,21 @@ ggplot(data = Crash,
 More crashes occur on flat roads than hill roads for every year recorded. But that could be due to there being more flat roads overall in New Zealand than there are hill roads.
 
 ```{r}
-ggplot(Crash, aes(x = X, y = Y, color = region)) +
+ggplot(Train_set, aes(x = X, y = Y, color = region)) +
   geom_point() + ggtitle("X by Y and region") 
 ```
 It appears that X and Y contain redundant information that can be modeled by region.
 
 Count plot of response variable fatalCount:
 ```{r}
-ggplot(Crash, aes(x = fatalCount, y = speedLimit)) +
+ggplot(Train_set, aes(x = fatalCount, y = speedLimit)) +
   geom_count() + ggtitle("Count plot of fatalCount by speedLimit") 
 ```
 fatalCount's of 5 and above appear to only occur when speedLimit is above 90
 
 ## Correlation plot
 ```{r}
-ggcorrplot(cor(select_if(Crash, is.numeric)),
+ggcorrplot(cor(select_if(Train_set, is.numeric)),
 method = "square",
 lab = TRUE,
 lab_size = 1.9, 
@@ -360,7 +372,7 @@ type = "lower")
 ```
 
 ```{r}
-findCorrelation(cor(select_if(Crash, is.numeric)), cutoff = 0.7, names = TRUE)
+findCorrelation(cor(select_if(Train_set, is.numeric)), cutoff = 0.7, names = TRUE)
 ```
 
 Y is strongly correlated with areaUnitID and meshblockID with a correlation of -0.98 and -0.97 respectively.
@@ -372,26 +384,26 @@ Due to X and Y being strongly correlated with a correlation of 0.73 and that the
 Due to the strong correlation between these variables I will be removing the following variables: areaUnitID and meshblockId
 
 ```{r}
-Crash <- Crash %>% select(-areaUnitID, -meshblockId, -Y, -X)
+Train_set <- Train_set %>% select(-areaUnitID, -meshblockId, -Y, -X)
 ```
 
 I now have 23 variables in the Crash data set.
 
 ## Skewness
 ```{r}
-pander(skewness(select_if(Crash, is.numeric)))
+pander(skewness(select_if(Train_set, is.numeric)))
 ```
 
-The response variable fatalCount has a skewness of 15.07 this is significant departure from the normal distribution which has a skewness of 0.
+The response variable fatalCount has a skewness of 15.22 this is significant departure from the normal distribution which has a skewness of 0.
 
 The majority of the numerical variables have a skewness value above 3. Only vanOrUtility, speedLimit, NumberOfLanes, crashYear and carStationWagon aren't skewed.
 
 ## Kurtosis
 ```{r}
-pander(kurtosis(select_if(Crash, is.numeric)))
+pander(kurtosis(select_if(Train_set, is.numeric)))
 ```
 
-The response variable fatalCount has a kurtosis of 363.7, which means it has a leptokurtic distribution (high peak) this is significant departure from the normal distribution where the absolute kurtosis value should not exceed 7.1.
+The response variable fatalCount has a kurtosis of 373.7, which means it has a leptokurtic distribution (high peak) this is significant departure from the normal distribution where the absolute kurtosis value should not exceed 7.1.
 
 The variables taxi, motorcycle, bus, moped, otherVehicleType, schoolBus and unknownVehicleType all have extremely high kurtosis values, indicating leptokurtic distributions.
 
@@ -406,7 +418,7 @@ Given that the response variable is discrete count data (counting the number of 
 # Feature selection:
 Feature importance:
 ```{r}
-roc_imp <- filterVarImp(x = Crash[,-1], y = Crash$fatalCount, nonpara = TRUE)
+roc_imp <- filterVarImp(x = Train_set[,-1], y = Train_set$fatalCount, nonpara = TRUE)
 roc_imp <- data.frame(cbind(variable = rownames(roc_imp), score = roc_imp[,1]))
 roc_imp$score <- as.double(roc_imp$score)
 roc_imp <- roc_imp[order(roc_imp$score,decreasing = TRUE),]
@@ -415,7 +427,7 @@ pander(roc_imp)
 
 Reducing the data set to the ten most important variables:
 ```{r}
-Crash2 <- Crash %>% select(fatalCount, roc_imp$variable[1:10])
+Train_set2 <- Train_set %>% select(fatalCount, roc_imp$variable[1:10])
 ```
 
 # Fitting Poisson Regression Model
@@ -423,7 +435,7 @@ Fitting a poisson regression model:
 ```{r}
 model_glm_P <- glm(fatalCount ~ speedLimit + motorcycle + roadLane + truck + region + 
                      NumberOfLanes + otherVehicleType + crashSHDescription + 
-                     carStationWagon + flatHill, data = Crash2, family = poisson)
+                     carStationWagon + flatHill, data = Train_set2, family = poisson)
 pander(summary(model_glm_P))
 ```
 
@@ -451,7 +463,7 @@ Because I want to use AIC or BIC for model selection I will fit a negative binom
 ```{r}
 model_nb <- glm.nb(fatalCount ~ speedLimit + motorcycle + roadLane + truck + region + 
                      NumberOfLanes + otherVehicleType + crashSHDescription + 
-                     carStationWagon + flatHill, data = Crash2)
+                     carStationWagon + flatHill, data = Train_set2)
 ```
 
 ```{r}
@@ -468,17 +480,14 @@ check_zeroinflation(model_nb)
 The ratio of observed and predicted zeros is within the tolerance range which means that zero inflation is not an issue for the negative binomial model, so there is no need to fit a zero-inflated negative binomial model.
 
 ## Residual plots
-
 ```{r}
 simulationOutput2 <- simulateResiduals(fittedModel = model_nb)
 plot(simulationOutput2)
 ```
 
-The KS test is not statistically significant at a significance level of 0.05
+The KS test and the dispersion test are not statistically significant at a significance level of 0.05
 
 The outlier test has a p-value of 0 which is concerning, this indicates that there could potentially be outliers in the data which could negatively affect the model by leading to overfitting.
-
-The dispersion test is statistically significant at a significance level of 0.05, I may need to consider additional methods to deal with overdispersion.
 
 ## Diagnostic measures
 
@@ -496,12 +505,12 @@ influencePlot(model_nb)
 There are six oberservations that are influential points according to cook's distance, I will remove them from the data set.
 
 ```{r}
-Crash2 <- Crash2[-c(190331, 221131, 399903, 634541, 665208, 772429),]
+Train_set2 <- Train_set2[-c(190331, 221131, 399903, 634541, 665208, 772429),]
 ```
 
 Finding outliers using the standardized residuals:
 ```{r}
-model.diag.metrics <- augment(model_nb)
+suppressWarnings({model.diag.metrics <- augment(model_nb)})
 model.diag.metrics <- model.diag.metrics %>%
 mutate(index = 1:nrow(model.diag.metrics)) %>%
 select(index, everything())
@@ -509,25 +518,24 @@ select(index, everything())
 large_std_resid <- model.diag.metrics[model.diag.metrics$.std.resid > 3 | model.diag.metrics$.std.resid < -3, ]
 nrow(large_std_resid)
 ```
-There are 208 observations that have standardized residuals larger than 3 in absolute value.
+There are 133 observations that have standardized residuals larger than 3 in absolute value.
 
 I am going to remove these from the data set:
 ```{r}
-Crash2 <- Crash2[-c(large_std_resid$index), ]
+Train_set2 <- Train_set2[-c(large_std_resid$index), ]
 ```
-
 
 # Variable selection
 Refitting model using data excluding influential points and outliers:
 ```{r}
 model_nb <- glm.nb(fatalCount ~ speedLimit + motorcycle + roadLane + truck + region + 
                      NumberOfLanes + otherVehicleType + crashSHDescription + 
-                     carStationWagon + flatHill, data = Crash2)
+                     carStationWagon + flatHill, data = Train_set2)
 ```
 
 Stepwise BIC:
 ```{r}
-step(model_nb, direction = "both", k = log(nrow(Crash2)))
+step(model_nb, direction = "both", k = log(nrow(Train_set2)))
 ```
 Stepwise BIC initially removed flatHill and otherVehicleType, but then added these variables back into the model. This suggests that the inclusion of these variables improve (decrease) the BIC of the model.
 
@@ -539,7 +547,7 @@ simulationOutput2 <- simulateResiduals(fittedModel = model_nb)
 plot(simulationOutput2)
 ```
 
-The KS test and dispersion test are not statistically significant at a significance level of 0.05, so I conclude that the data does fit a negative binomial model.
+The KS test and dispersion test are statistically significant at a significance level of 0.05, so I conclude that the data does not fit a negative binomial model. I may need to consider other models.
 
 The outlier test has a p-value of 0 which is concerning, this indicates that there could potentially be outliers in the data which could negatively affect the model by leading to overfitting. It's possible that using type = binomial may have inflated the amount of estimated outliers, so I will use a bootstrap method next to determine the amount of outliers.
 
@@ -550,18 +558,20 @@ outliers <- testOutliers(simulationOutput2, type = "bootstrap", nBoot = 20)
 ```{r}
 outliers
 ```
-There are 1153 more outliers than expected in the data set.
+Outliers according to the DHARMa bootstrapped outlier test are defined as observations that fall outside the range of simulated values, meaning they have scaled residuals of 0 or 1.
+
+There are 930 more outliers than expected in the data set.
 
 Checking the residual plots to see if removing these outliers fixes the outlier problem:
 ```{r}
-Potential_outliers <- sort(simulationOutput2$scaledResiduals, decreasing = TRUE)[1:1153]
-Crash3 <- Crash2[-c(Potential_outliers), ]
+Potential_outliers <- which(simulationOutput2$scaledResiduals == 1 | simulationOutput2$scaledResiduals == 0)
+Train_set3 <- Train_set2[-c(Potential_outliers), ]
 ```
 
 ```{r}
 model_nb2 <- glm.nb(fatalCount ~ speedLimit + motorcycle + roadLane + truck + region + 
                      NumberOfLanes + otherVehicleType + crashSHDescription + 
-                     carStationWagon + flatHill, data = Crash3)
+                     carStationWagon + flatHill, data = Train_set3)
 ```
 
 ```{r}
@@ -569,82 +579,120 @@ simulationOutput3 <- simulateResiduals(fittedModel = model_nb2)
 plot(simulationOutput3)
 ```
 
+Removing the outliers identified by the first outlier test did not fix the outlier issue, however it did affect the KS test and Dispersion test.
+
+The KS test now has a non-significant p-value which informs me that the negative binomial distribution does fit the data.
+
+The dispersion test also has a non-significant p-value.
+
+Given this result it seems that model_nb2: the negative binomial model that excludes the outliers identified using the bootstrap method is a better fit to the data than model_nb, I am going to use the MAE, MSE and RMSE to compare the models 
+
+# Evaluation of model
+Applying the same method for missing data removal on the test set:
 ```{r}
-outliers3 <- testOutliers(simulationOutput3, type = "bootstrap", nBoot = 20, plot = FALSE)
+Test_set2 <- Test_set %>% select(-missing.table$variable[1:32])
+Test_set2 <- Test_set2[complete.cases(Test_set2), ]
+# making the dependent variable the first column
+Test_set2 <- Test_set2 %>% relocate(fatalCount)
+
+# Selecting variables used for the model
+Test_set2 <- Test_set2 %>% select(fatalCount, roc_imp$variable[1:10])
 ```
 
 ```{r}
-outliers3
+# predicting response data based off model and test data.
+prediction <- predict(model_nb, Test_set2, type = "response")
+prediction2 <- predict(model_nb2, newdata = Test_set2, type = "response")
+
+MAE <- mae(actual = Test_set2$fatalCount, predicted = prediction)
+MAE2 <- mae(actual = Test_set2$fatalCount, predicted = prediction2)
+MSE <- mse(actual = Test_set2$fatalCount, predicted = prediction)
+MSE2 <- mse(actual = Test_set2$fatalCount, predicted = prediction2)
+RMSE <- rmse(actual = Test_set2$fatalCount, predicted = prediction)
+RMSE2 <- rmse(actual = Test_set2$fatalCount, predicted = prediction2)
+
+df <- data.frame(. = c("MAE", "MSE", "RMSE"),
+                  model_nb = c(MAE, MSE, RMSE),
+                 model_nb2 = c(MAE2, MSE2, RMSE2))
+
+pander(df)
 ```
 
-Removing the outliers identified by the first outlier test did not fix the outlier issue, given this result I have decided to keep the outliers in the data set and to continue with my original negative binomial model.
+The mean absolute error is better for model_nb2 than model_nb.
 
+The root mean squared error is worse for model_nb than model_nb2.
+
+The improvement in MAE but worse RMSE for model_nb2 informs me that model_nb2 is making more large scale errors and fewer small scale errors than model model_nb.
+
+Considering that the difference in RMSE is 0.0003 between the models, and the previous KS and dispersion tests on the models, I will move forward with model_nb2.
+
+Interpretation of MAE for model_nb2:
+
+MAE: On average the models predictions are around 0.01837 deaths away from the true death counts for a car crash.
 
 # Interpretting model coefficients
 ```{r}
-pander(summary(model_nb))
+pander(summary(model_nb2))
 ```
 Interpretation of coefficients:
 
-For a one unit change in the speedLimit, the log of expected counts of fatalCount changes by 0.03264, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
+For a one unit change in the speedLimit, the log of expected counts of fatalCount changes by 0.03749, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
 
-For a one unit change in the motorcycle, the log of expected counts of fatalCount changes by 1.048, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
+For a one unit change in the motorcycle, the log of expected counts of fatalCount changes by 1.13, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
 
-The expected log count for 2-way road lane is 1.408 higher than the expected log count for a 1-way road lane, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
+The expected log count for 2-way road lane is 1.825 higher than the expected log count for a 1-way road lane, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
 
-The expected log count for Off road lane is 1.593 higher than the expected log count for a 1-way road lane, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
+The expected log count for Off road lane is 1.829 higher than the expected log count for a 1-way road lane, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
 
-For a one unit change in the truck, the log of expected counts of fatalCount changes by 0.6753, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
+For a one unit change in the truck, the log of expected counts of fatalCount changes by 0.7649, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
 
-The expected log count for the Bay of Plenty region is 0.4476 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
+The expected log count for the Bay of Plenty region is 0.4855 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
 
-The expected log count for the Canterbury region is 0.3569 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
+The expected log count for the Canterbury region is 0.3924 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
 
-The expected log count for the Gisborne region is 0.1109 higher than the expected log count for the Auckland region given that the other predictor variables in the model are held constant. This is not statistically significant at a significance level of 0.05
+The expected log count for the Gisborne region is 0.03194 lower than the expected log count for the Auckland region given that the other predictor variables in the model are held constant. This is not statistically significant at a significance level of 0.05
 
-The expected log count for the Hawke's Bay region is 0.1867 higher than the expected log count for the Auckland region given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
+The expected log count for the Hawke's Bay region is 0.2978 higher than the expected log count for the Auckland region given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
 
-The expected log count for the Manawatū-Whanganui region is 0.3259 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
+The expected log count for the Manawatū-Whanganui region is 0.34 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
 
-The expected log count for the Marlborough region is 0.257 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
+The expected log count for the Marlborough region is 0.2019 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is not statistically significant at a significance level of 0.05
 
-The expected log count for the Nelson region is -0.2016 lower than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is not statistically significant at a significance level of 0.05
+The expected log count for the Nelson region is 0.3173 lower than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is not statistically significant at a significance level of 0.05
 
-The expected log count for the Northland region is 0.3716 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
+The expected log count for the Northland region is 0.4413 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
 
-The expected log count for the Otago region is -0.1064 lower than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is not statistically significant at a significance level of 0.05
+The expected log count for the Otago region is 0.1847 lower than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
 
-The expected log count for the Southland region is 0.03776 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is not statistically significant at a significance level of 0.05
+The expected log count for the Southland region is 0.1297 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is not statistically significant at a significance level of 0.05
 
-The expected log count for the Taranaki region is 0.2153 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
+The expected log count for the Taranaki region is 0.2836 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
 
-The expected log count for the Tasman region is -0.09333 lower than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is not statistically significant at a significance level of 0.05
+The expected log count for the Tasman region is 0.09087 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is not statistically significant at a significance level of 0.05
 
-The expected log count for the Waikato region is 0.3603 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
+The expected log count for the Waikato region is 0.3702 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
 
-The expected log count for the Wellington region is -0.1435 lower than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
+The expected log count for the Wellington region is 0.1627 lower than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
 
-The expected log count for the West Coast region is 0.2149 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
+The expected log count for the West Coast region is 0.2578 higher than the expected log count for the Auckland region, given that the other predictor variables in the model are held constant. This is statistically significant at a significance level of 0.05
 
-For a one unit change in the NumberOfLanes, the log of expected counts of fatalCount changes by -0.1688, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
+For a one unit change in the NumberOfLanes, the log of expected counts of fatalCount changes by -2502, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
 
-For a one unit change in the otherVehicleType, the log of expected counts of fatalCount changes by 0.3191, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
+For a one unit change in the otherVehicleType, the log of expected counts of fatalCount changes by 0.4191, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
 
-For a one unit change in the crashSHDescriptionYes, the log of expected counts of fatalCount changes by 0.1878, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
+For a one unit change in the crashSHDescriptionYes, the log of expected counts of fatalCount changes by 0.1618, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
 
-For a one unit change in the carStationWagon, the log of expected counts of fatalCount changes by -0.2145, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
+For a one unit change in the carStationWagon, the log of expected counts of fatalCount changes by -0.227, given that the other predictor variables in the model are held constant. This change is statistically significant at a significance level of 0.05
 
-For a one unit change in the flatHillHill, the log of expected counts of fatalCount changes by -0.02383, given that the other predictor variables in the model are held constant. This change is not statistically significant at significance level of 0.05
+For a one unit change in the flatHill-Hill Road, the log of expected counts of fatalCount changes by -0.06764, given that the other predictor variables in the model are held constant. This change is not statistically significant at significance level of 0.05
 
 # Conclusion
 
-The coefficients of the the regions Gisborne, Marlborough, Nelson, Otago, Southland and Tasman aren't statistically significant which means that there is no statistically significant difference in the count of deaths for a car crash (fatalCount) between those regions and the reference level Auckland. However other regions 
+The coefficients of the the regions Gisborne, Marlborough, Nelson, Southland and Tasman aren't statistically significant which means that there is no statistically significant difference in the count of deaths for a car crash (fatalCount) between those regions and the reference level Auckland. However other regions have a statistically significant difference in the count of deaths for a car crash when compared to Auckland.
 
 The variable flatHill is statistically insignificant however I will not be removing this variable from the data due to the fact that stepwise BIC keeps this variable in the model.
 
 The variables are on extremely different scales, which could be affecting the specific values of regression coefficients, however this does not affect the statistical significance or interpretation of the coefficients.
-
-For future projects I will split my data into a training set and a testing set so that I can use model evaluation metrics such as AUC-ROC, accuracy, precision and recall.
 
 Each observation in this data set could have a different number of people in the car at the time of the crash which will affect the total number of possible fatalities for that car crash, this is difficult to account for. Unfortunately the total number of people in the car at the time of the crash for each observation is unreported and I cannot determine a way to derive this variable from the variables in the data set. If the number of people in the car for each observation had been recorded then I would have treated this variable as an exposure variable and I would have used this variable as an offset in my model.
 

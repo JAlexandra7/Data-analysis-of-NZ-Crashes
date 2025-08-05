@@ -29,9 +29,7 @@ Derived variables: to avoid redundancy (and potential multicollinearity) I will 
 The following categorical variables were turned into factors so they can be passed to regression models later: crashDirectionDescription, crashSHDescription, flatHill, holiday, light, region, roadCharacter, roadLane, roadSurface, streetLight, trafficControl, weatherA, and weatherB.
 
 ### Missing data
-There are 59 variables and trying to place them onto one plot caused it to be unreadable. To resolve this it has been split into two separate plots.
-![Alt](Plots/Missing_data_1-31.png)
-![Alt](Plots/Missing_data_31-59.png)
+![Alt](Plots/Missing_data.png)
 It seems that most variables in the Crash data set have large amounts of missing data. Particularly temporarySpeedLimit, pedestrian, the encoded WeatherB variables, the encoded holiday variables, and advisorySpeed which appear to be majority missing data.
 
 There are 55 variables with missing data out of 59. Six of these variables have 94% of their data missing. Twenty four variables have between 66% and 58% of their data missing. Two variables had around 35% of their missing. The other twenty three variables had less than 2% of their data missing.
